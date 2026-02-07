@@ -6,3 +6,9 @@ __pycache__/
 *.log
 tmp*/
 .claude-code-router/
+.next/
+frontend/.next/
+backend/__pycache__/
+*.db
+*.db-shm
+*.db-wal
