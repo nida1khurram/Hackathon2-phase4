@@ -12,3 +12,4 @@ backend/__pycache__/
 *.db
 *.db-shm
 *.db-wal
+llm_history/
