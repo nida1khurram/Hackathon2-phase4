@@ -8,24 +8,37 @@ interface SendMessageResponse {
 /**
  * Sends a message to the chat API and returns the AI response
  * @param message The user's message to send
- * @param accessToken The user's authentication token
+ * @param userId The authenticated user's ID (required)
+ * @param accessToken The user's authentication token (required)
+ * @param conversationId Optional conversation ID for continuing conversations
  * @returns Promise resolving to the AI response
  */
 export const sendMessage = async (
   message: string,
-  userId: string = "guest",
-  accessToken: string = "",
+  userId: string,  // User ID is now required
+  accessToken: string,  // Access token is now required
   conversationId?: string
 ): Promise<SendMessageResponse> => {
   try {
+    console.log("API call details:");
+    console.log("  - User ID:", userId);
+    console.log("  - Has access token:", !!accessToken);
+    console.log("  - Conversation ID:", conversationId);
+    console.log("  - API URL:", `${process.env.NEXT_PUBLIC_API_URL}/api/${userId}/chat`);
+
+    // Verify that both user ID and access token are provided
+    if (!userId) {
+      throw new Error("User ID is required for chat operations");
+    }
+    
+    if (!accessToken) {
+      throw new Error("Authentication token is required for chat operations");
+    }
+
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
+      'Authorization': `Bearer ${accessToken}`,  // Always include the authorization header
     };
-
-    // Add authorization header only if token is provided
-    if (accessToken) {
-      headers['Authorization'] = `Bearer ${accessToken}`;
-    }
 
     const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/${userId}/chat`, {
       method: 'POST',
@@ -35,6 +48,8 @@ export const sendMessage = async (
         conversation_id: conversationId, // Optional conversation ID for continuing conversations
       }),
     });
+
+    console.log("Response status:", response.status);
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));

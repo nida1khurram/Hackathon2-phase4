@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import { sendMessage } from '../lib/api/chat';
 import { useAuth } from '../lib/context/auth';
 
@@ -17,13 +16,38 @@ interface TodoChatProps {
 }
 
 const TodoChat: React.FC<TodoChatProps> = ({ onTaskOperation }) => {
-  const router = useRouter();
-  const { user, loading, verifyUser } = useAuth();
+  const { user, loading } = useAuth();
   const [inputMessage, setInputMessage] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [conversationId, setConversationId] = useState<number | null>(null);
   const messagesEndRef = useRef<null | HTMLDivElement>(null);
+
+  // Show loading state while checking authentication
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+      </div>
+    );
+  }
+
+  // We no longer use guest IDs - only authenticated user IDs
+  // If user is not authenticated, we'll show a message prompting them to log in
+  if (!user) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full p-4">
+        <h3 className="text-lg font-medium mb-2">Please Log In</h3>
+        <p className="text-gray-600 mb-4">You need to be logged in to use the chat feature</p>
+        <button
+          onClick={() => window.location.href = '/login'}
+          className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md"
+        >
+          Login
+        </button>
+      </div>
+    );
+  }
 
   // Scroll to bottom of messages when new messages arrive
   useEffect(() => {
@@ -39,9 +63,6 @@ const TodoChat: React.FC<TodoChatProps> = ({ onTaskOperation }) => {
 
     if (!inputMessage.trim()) return;
 
-    // Get token from localStorage and use actual user ID from auth context
-    const token = localStorage.getItem('auth_token');
-
     // Add user message to the chat
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -55,11 +76,27 @@ const TodoChat: React.FC<TodoChatProps> = ({ onTaskOperation }) => {
     setIsLoading(true);
 
     try {
-      // Send message to backend API using actual user ID if available
+      // Only use authenticated user ID - no more guest functionality
+      const token = localStorage.getItem('auth_token');
+      
+      // Verify that user is authenticated and token exists
+      if (!user?.id) {
+        throw new Error("User not authenticated");
+      }
+      
+      if (!token) {
+        throw new Error("Authentication token not found");
+      }
+      
+      // Use the authenticated user ID
+      const actualUserId = user.id.toString();
+      console.log("Using authenticated user ID:", actualUserId);
+      console.log("Using authentication token:", token.substring(0, 20) + "...");
+      
       const response = await sendMessage(
         inputMessage,
-        user?.id?.toString() || "guest",  // Use actual user ID if logged in, otherwise guest
-        token || "",                     // Use token if available
+        actualUserId,                      // Use authenticated user ID only
+        token,                             // Use token
         conversationId ? conversationId.toString() : undefined      // Pass conversation ID if we have one
       );
 
@@ -111,36 +148,12 @@ const TodoChat: React.FC<TodoChatProps> = ({ onTaskOperation }) => {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center h-full">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-      </div>
-    );
-  }
-
-  // Show login prompt if user is not authenticated
-  if (!user) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full p-4">
-        <h3 className="text-lg font-medium mb-2">Please Log In</h3>
-        <p className="text-gray-600 mb-4">You need to be logged in to use the chat feature</p>
-        <button
-          onClick={() => router.push('/login')}
-          className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md"
-        >
-          Login
-        </button>
-      </div>
-    );
-  }
-
   return (
     <div className="flex flex-col h-full max-w-4xl mx-auto bg-white rounded-lg shadow-md overflow-hidden">
       {/* Chat Header */}
       <div className="bg-gray-100 p-4 border-b">
         <h2 className="text-xl font-semibold text-gray-800">Todo AI Assistant</h2>
-        <p className="text-sm text-gray-600">Manage your tasks with AI assistance</p>
+        <p className="text-sm text-gray-600">Manage your tasks with AI assistance (No login required)</p>
       </div>
 
       {/* Messages Container */}
@@ -154,7 +167,7 @@ const TodoChat: React.FC<TodoChatProps> = ({ onTaskOperation }) => {
             </div>
             <h3 className="text-lg font-medium text-gray-700">Welcome to Todo AI Assistant!</h3>
             <p className="text-gray-600 mt-1">
-              I can help you manage your tasks. Try asking me to add, list, complete, or delete tasks.
+              I can help you manage your tasks. No login required! Try asking me to add, list, complete, or delete tasks.
             </p>
             <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-left">
               <div className="bg-blue-50 p-3 rounded-md">
@@ -228,7 +241,7 @@ const TodoChat: React.FC<TodoChatProps> = ({ onTaskOperation }) => {
           </button>
         </div>
         <p className="text-xs text-gray-500 mt-2">
-          Ask me to add, list, complete, or delete tasks
+          Ask me to add, list, complete, or delete tasks (No login required)
         </p>
       </form>
     </div>

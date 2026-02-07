@@ -25,17 +25,57 @@ class MockAuthService:
 
     def validate_user(self, user_id: str) -> bool:
         """Validate if user exists and is authorized"""
-        try:
-            user_id_int = int(user_id)
-            return user_id_int > 0  # Simple validation - user_id should be positive integer
-        except ValueError:
-            return False
+        # Allow both numeric user IDs and guest user identifiers
+        if 'guest' in user_id.lower():
+            # Valid guest user identifier
+            return True
+        else:
+            # Validate numeric user ID
+            try:
+                user_id_int = int(user_id)
+                return user_id_int > 0  # Simple validation - user_id should be positive integer
+            except ValueError:
+                return False
 
 
 class TodoMCPTools:
     def __init__(self, db_session: Session, auth_service=None):
         self.db_session = db_session
         self.auth_service = auth_service or MockAuthService()
+
+    def _get_user_id_for_guest(self, guest_user_id: str) -> int:
+        """Helper method to convert guest user identifier to actual database user ID"""
+        from sqlmodel import select
+        from ..models.user import User
+        import re
+        
+        # The format is likely "guest_1770449315065" based on the error message
+        guest_match = re.search(r'guest_(\d+)', str(guest_user_id))
+        if guest_match:
+            # Use a deterministic mapping to get a consistent user ID for this guest
+            guest_num = int(guest_match.group(1)) % 1000000  # Keep it within reasonable range
+            # Look up the actual user ID from the database
+            statement = select(User).where(User.email == f"guest_{guest_num}@example.com")
+            db_user = self.db_session.exec(statement).first()
+            
+            if db_user:
+                return db_user.id
+            else:
+                # Fallback: try the original format used in chat_service
+                # The chat service creates emails like "guest_{hash}@example.com"
+                # where hash is based on the original guest ID
+                guest_hash = abs(hash(str(guest_user_id))) % 1000000
+                statement = select(User).where(User.email == f"guest_{guest_hash}@example.com")
+                db_user = self.db_session.exec(statement).first()
+                
+                if db_user:
+                    return db_user.id
+                else:
+                    # Last resort: try to find any user that might match this guest pattern
+                    # This shouldn't happen if the chat service properly creates guest users
+                    raise ValueError(f"Guest user not found in database: {guest_user_id}")
+        else:
+            raise ValueError(f"Invalid guest user_id format: {guest_user_id}")
 
     async def add_task(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """MCP tool to add a new task"""
@@ -47,11 +87,15 @@ class TodoMCPTools:
         if not self.auth_service.validate_user(user_id):
             raise ValueError(f"Invalid user: {user_id}")
 
-        # Convert user_id to integer for database storage
-        try:
-            user_id_int = int(user_id)
-        except ValueError:
-            raise ValueError(f"Invalid user_id format: {user_id}")
+        # Handle both numeric user IDs and guest user identifiers
+        if 'guest' in str(user_id).lower():
+            user_id_int = self._get_user_id_for_guest(user_id)
+        else:
+            # Convert user_id to integer for database storage
+            try:
+                user_id_int = int(user_id)
+            except ValueError:
+                raise ValueError(f"Invalid user_id format: {user_id}")
 
         # Create task in database
         new_task = Task(user_id=user_id_int, title=title, description=description, completed=False)
@@ -76,11 +120,15 @@ class TodoMCPTools:
         if not self.auth_service.validate_user(user_id):
             raise ValueError(f"Invalid user: {user_id}")
 
-        # Convert user_id to integer for database query
-        try:
-            user_id_int = int(user_id)
-        except ValueError:
-            raise ValueError(f"Invalid user_id format: {user_id}")
+        # Handle both numeric user IDs and guest user identifiers
+        if 'guest' in str(user_id).lower():
+            user_id_int = self._get_user_id_for_guest(user_id)
+        else:
+            # Convert user_id to integer for database query
+            try:
+                user_id_int = int(user_id)
+            except ValueError:
+                raise ValueError(f"Invalid user_id format: {user_id}")
 
         # Query tasks from database
         query = self.db_session.query(Task).filter(Task.user_id == user_id_int)
@@ -112,12 +160,17 @@ class TodoMCPTools:
         if not self.auth_service.validate_user(user_id):
             raise ValueError(f"Invalid user: {user_id}")
 
-        # Convert IDs to integers for database operations
-        try:
-            user_id_int = int(user_id)
+        # Handle both numeric user IDs and guest user identifiers
+        if 'guest' in str(user_id).lower():
+            user_id_int = self._get_user_id_for_guest(user_id)
             task_id_int = int(task_id)
-        except ValueError:
-            raise ValueError(f"Invalid user_id or task_id format")
+        else:
+            # Convert IDs to integers for database operations
+            try:
+                user_id_int = int(user_id)
+                task_id_int = int(task_id)
+            except ValueError:
+                raise ValueError(f"Invalid user_id or task_id format")
 
         # Find the task and verify it belongs to the user
         task = self.db_session.query(Task).filter(
@@ -152,11 +205,33 @@ class TodoMCPTools:
         if not self.auth_service.validate_user(user_id):
             raise ValueError(f"Invalid user: {user_id}")
 
-        # Convert user_id to integer for database operations
-        try:
-            user_id_int = int(user_id)
-        except ValueError:
-            raise ValueError(f"Invalid user_id format")
+        # Handle both numeric user IDs and guest user identifiers
+        if 'guest' in str(user_id).lower():
+            # For guest users, look up the actual user ID from the database
+            from sqlmodel import select
+            from ..models.user import User
+            import re
+            
+            # Extract a numeric identifier from the guest ID string
+            guest_match = re.search(r'(\d+)', str(user_id))
+            if guest_match:
+                guest_num = int(guest_match.group(1)) % 1000000
+                # Look up the actual user ID from the database
+                statement = select(User).where(User.email == f"guest_{guest_num}@example.com")
+                db_user = self.db_session.exec(statement).first()
+                
+                if db_user:
+                    user_id_int = db_user.id
+                else:
+                    raise ValueError(f"Guest user not found in database: {user_id}")
+            else:
+                raise ValueError(f"Invalid guest user_id format: {user_id}")
+        else:
+            # Convert user_id to integer for database operations
+            try:
+                user_id_int = int(user_id)
+            except ValueError:
+                raise ValueError(f"Invalid user_id format")
 
         task = None
 
@@ -217,11 +292,33 @@ class TodoMCPTools:
         if not self.auth_service.validate_user(user_id):
             raise ValueError(f"Invalid user: {user_id}")
 
-        # Convert user_id to integer for database operations
-        try:
-            user_id_int = int(user_id)
-        except ValueError:
-            raise ValueError(f"Invalid user_id format")
+        # Handle both numeric user IDs and guest user identifiers
+        if 'guest' in str(user_id).lower():
+            # For guest users, look up the actual user ID from the database
+            from sqlmodel import select
+            from ..models.user import User
+            import re
+            
+            # Extract a numeric identifier from the guest ID string
+            guest_match = re.search(r'(\d+)', str(user_id))
+            if guest_match:
+                guest_num = int(guest_match.group(1)) % 1000000
+                # Look up the actual user ID from the database
+                statement = select(User).where(User.email == f"guest_{guest_num}@example.com")
+                db_user = self.db_session.exec(statement).first()
+                
+                if db_user:
+                    user_id_int = db_user.id
+                else:
+                    raise ValueError(f"Guest user not found in database: {user_id}")
+            else:
+                raise ValueError(f"Invalid guest user_id format: {user_id}")
+        else:
+            # Convert user_id to integer for database operations
+            try:
+                user_id_int = int(user_id)
+            except ValueError:
+                raise ValueError(f"Invalid user_id format")
 
         task = None
 

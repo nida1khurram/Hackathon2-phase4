@@ -285,3 +285,68 @@ backend:
     requests:
       cpu: "200m"
       memory: "256Mi"
+```
+
+## AI-Assisted Kubernetes Operations
+
+This deployment supports AI-assisted Kubernetes operations using kubectl-ai and kagent:
+
+### Using kubectl-ai for Natural Language Commands
+
+You can use natural language to manage your deployment:
+
+```bash
+# Deploy the frontend with 2 replicas
+kubectl ai "deploy the todo frontend with 2 replicas"
+
+# Scale the backend to handle more load
+kubectl ai "scale the backend deployment to 3 replicas"
+
+# Check why pods are failing
+kubectl ai "check why the pods are failing"
+
+# Get resource usage
+kubectl ai "show me the CPU and memory usage of all pods"
+
+# Create a new service
+kubectl ai "create a service for the todo backend that exposes port 8000"
+
+# Update configuration
+kubectl ai "update the frontend environment variable API_URL to point to the backend service"
+```
+
+### Using kagent for Advanced Operations
+
+For more complex operations, use kagent:
+
+```bash
+# Analyze cluster health
+kagent "analyze the cluster health and report any issues"
+
+# Optimize resource allocation
+kagent "optimize resource allocation for the todo-app deployments"
+
+# Troubleshoot issues
+kagent "troubleshoot why the frontend pods are restarting frequently"
+
+# Security analysis
+kagent "perform a security analysis of the todo-app namespace"
+```
+
+### Prerequisites for AI Tools
+
+To use kubectl-ai and kagent, you need to have them installed:
+
+1. Install kubectl-ai plugin:
+```bash
+# Follow the installation instructions from the kubectl-ai documentation
+kubectl krew install ai
+```
+
+2. Install kagent (if available in your environment):
+```bash
+# Installation varies by environment
+# Check your system documentation for kagent installation
+```
+
+Once installed, you can use natural language to manage your Kubernetes resources instead of remembering complex kubectl commands.

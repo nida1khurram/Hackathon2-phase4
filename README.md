@@ -217,11 +217,20 @@ minikube service todo-app-frontend
 ```
 
 ### AI-Assisted DevOps
-- **Natural Language Operations**: Use kubectl-ai for natural language Kubernetes commands
-- **Automated Workflows**: Kubernetes agent for deployment automation
-- **AI-Powered Diagnostics**: kagent for cluster health analysis and resource allocation checks
-- **AI-Assisted Dockerfiles**: Gordon for Dockerfile generation (when available)
-- **Phase IV Best Practices**: Following cloud-native architecture principles
+- **Docker AI Agent (Gordon)**: AI-assisted Docker operations for optimized containerization
+  - Security-first Dockerfile generation with non-root users
+  - Multi-stage build optimization for size reduction
+  - Runtime efficiency improvements
+- **Natural Language Kubernetes Operations**: Use kubectl-ai for natural language Kubernetes commands
+  - Deploy applications with commands like "kubectl ai deploy frontend with 2 replicas"
+  - Scale resources with "kubectl ai scale backend to handle more load"
+  - Troubleshoot with "kubectl ai check why the pods are failing"
+- **AI-Powered Diagnostics**: kagent for cluster health analysis and resource optimization
+  - Cluster health analysis with "kagent analyze the cluster health"
+  - Resource allocation optimization with "kagent optimize resource allocation"
+  - Security scanning and compliance checking
+- **Automated Workflows**: AI agents for deployment automation
+- **Phase IV Best Practices**: Following cloud-native architecture principles with AI assistance
 
 ## Contributing
 

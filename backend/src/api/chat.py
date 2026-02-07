@@ -7,13 +7,14 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session
 from typing import List, Optional, Dict, Any
+from uuid import uuid4
 from ..database import get_session
 from ..models.user import User
-from ..middleware.auth import get_current_user
 from ..schemas.chat import ChatRequest, ChatResponse, ChatHistoryResponse
 from ..services.chat_service import ChatService
 from ..services.ai_agent_manager import AIAgentManager
 from ..mcp_server.server import TodoMCPTools
+from ..middleware.auth import get_current_user
 import json
 
 logger = logging.getLogger(__name__)
@@ -21,38 +22,38 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-async def execute_tool_calls(tool_calls: List[Dict[str, Any]], current_user: User, session: Session) -> str:
+async def execute_tool_calls(tool_calls: List[Dict[str, Any]], user_id: str, session: Session) -> str:
     """
     Execute the tool calls with authenticated user context
     """
     results = []
 
-    # Create the tools instance with the authenticated user context
+    # Create the tools instance with the database session
     tools = TodoMCPTools(db_session=session)
 
     for tool_call in tool_calls:
         function_name = tool_call["function"]["name"]
         arguments = tool_call["function"]["arguments"]
 
-        # Override the user_id in the arguments with the authenticated user's ID
-        arguments["user_id"] = str(current_user.id)
+        # Ensure the user_id in the arguments matches the authenticated user
+        arguments["user_id"] = user_id
 
         try:
-            # Execute the appropriate tool function
+            # Execute the appropriate tool function with authenticated user context
             if function_name == "add_task":
-                result = await tools.add_task(arguments)
+                result = await tools.add_task(params=arguments)
                 results.append(f"Added task: {result.get('title', 'Untitled')}")
             elif function_name == "list_tasks":
-                result = await tools.list_tasks(arguments)
+                result = await tools.list_tasks(params=arguments)
                 results.append(f"Found {len(result)} tasks")
             elif function_name == "complete_task":
-                result = await tools.complete_task(arguments)
+                result = await tools.complete_task(params=arguments)
                 results.append(f"Completed task: {result.get('title', 'Untitled')}")
             elif function_name == "delete_task":
-                result = await tools.delete_task(arguments)
-                results.append(f"Deleted task ID: {result.get('task_id')}")
+                result = await tools.delete_task(params=arguments)
+                results.append(f"Deleted task ID: {result.get('id', 'Unknown')}")
             elif function_name == "update_task":
-                result = await tools.update_task(arguments)
+                result = await tools.update_task(params=arguments)
                 results.append(f"Updated task: {result.get('title', 'Untitled')}")
             else:
                 results.append(f"Unknown function: {function_name}")
@@ -90,19 +91,19 @@ async def chat_endpoint(
         chat_service = ChatService(session)
         ai_agent_manager = AIAgentManager()
 
-        # Get or create conversation
-        conversation = chat_service.get_or_create_conversation(chat_request.conversation_id, current_user.id)
+        # Get or create conversation (using the authenticated user's ID)
+        conversation = chat_service.get_or_create_conversation(chat_request.conversation_id, str(current_user.id))
 
         # Add user message to conversation
         user_message = chat_service.add_message(
             conversation_id=conversation.id,
-            user_id=current_user.id,
+            user_id=str(current_user.id),
             role="user",
             content=chat_request.message
         )
 
         # Get conversation history for context
-        history_messages = chat_service.get_conversation_history(conversation.id, current_user.id)
+        history_messages = chat_service.get_conversation_history(conversation.id, str(current_user.id))
 
         # Format history for AI agent (convert to the format expected by the AI)
         formatted_history = []
@@ -127,7 +128,7 @@ async def chat_endpoint(
             tool_calls = ai_result.get("tool_calls", [])
 
             # Execute the tool calls with authenticated user context
-            tool_execution_result = await execute_tool_calls(tool_calls, current_user, session)
+            tool_execution_result = await execute_tool_calls(tool_calls, str(current_user.id), session)
 
             # Generate a user-friendly response based on tool execution
             response_content = f"I've processed your request. {tool_execution_result}"
@@ -137,7 +138,7 @@ async def chat_endpoint(
         # Add AI response to conversation
         ai_message = chat_service.add_message(
             conversation_id=conversation.id,
-            user_id=current_user.id,  # This represents the assistant's user context
+            user_id=str(current_user.id),  # This represents the assistant's user context
             role="assistant",
             content=response_content
         )
@@ -166,27 +167,18 @@ async def chat_endpoint(
 def get_conversation_history(
     user_id: str,
     conversation_id: int,
-    current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session)
 ):
     """
     Get the history of a specific conversation.
     """
-    logger.info(f"User {current_user.id} requesting conversation history {conversation_id}")
-
-    # Verify that the user_id in the path matches the authenticated user
-    if str(current_user.id) != user_id:
-        logger.warning(f"User {current_user.id} attempted to access history for user {user_id}")
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied"
-        )
+    logger.info(f"Requesting conversation history {conversation_id} for user {user_id}")
 
     try:
         chat_service = ChatService(session)
 
         # Verify conversation belongs to user
-        conversation = chat_service.get_conversation(conversation_id, current_user.id)
+        conversation = chat_service.get_conversation(conversation_id, user_id)
         if not conversation:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -194,7 +186,7 @@ def get_conversation_history(
             )
 
         # Get messages
-        messages = chat_service.get_conversation_history(conversation_id, current_user.id)
+        messages = chat_service.get_conversation_history(conversation_id, user_id)
 
         return ChatHistoryResponse(
             messages=messages,
